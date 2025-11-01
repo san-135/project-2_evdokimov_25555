@@ -1,4 +1,4 @@
-.PHONY: install project run build publish package-install p-install activate
+.PHONY: install project run build publish package-install p-install activate lint ruff fix
 
 install:
 	poetry install
@@ -18,3 +18,8 @@ package-install p-install:
 activate:
 	source .venv/bin/activate
 
+lint ruff:
+	poetry run ruff check .
+
+fix:
+	poetry run ruff check . --fix
