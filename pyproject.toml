@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "project-2-evdokimov-25555"
+version = "0.1.0"
+description = ""
+authors = ["Alexander Evdokimov <a.evdokimof135@gmail.com>"]
+readme = "README.md"
+packages = [
+    { include = "src" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+[tool.poetry.scripts]
+project = "src.primitive_db.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
