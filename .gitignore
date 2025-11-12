@@ -1,0 +1,7 @@
+.venv/
+dist/
+.DS_Store
+__pycache__/
+*/__pycache__/
+db_meta.json
+data/

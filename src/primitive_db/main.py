@@ -4,4 +4,3 @@ from src.primitive_db import engine
 
 def main():
     engine.run()
-
