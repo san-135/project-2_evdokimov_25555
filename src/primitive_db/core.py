@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from decorators import confirm_action, create_cacher, handle_errors, log_time
 
 ALLOWED_TYPES: Dict[str, type] = {"int": int, "str": str, "bool": bool}
 
@@ -79,6 +81,7 @@ def _cast_to_type(value: Any, type_name: str) -> Any:
     raise ValueError(f"Ожидался тип {type_name}, получено: {value!r}")
 
 
+@handle_errors
 def create_table(
     metadata: Dict[str, Any],
     table_name: str,
@@ -105,6 +108,8 @@ def create_table(
     return metadata
 
 
+@confirm_action("удаление таблицы")
+@handle_errors
 def drop_table(metadata: Dict[str, Any], table_name: str) -> Dict[str, Any]:
     """
     Удалить таблицу: проверить существование и обновить metadata.
@@ -118,6 +123,7 @@ def drop_table(metadata: Dict[str, Any], table_name: str) -> Dict[str, Any]:
     return metadata
 
 
+@handle_errors
 def list_tables(metadata: Dict[str, Any]) -> List[str]:
     """
     Вернуть список имён всех таблиц.
@@ -125,6 +131,7 @@ def list_tables(metadata: Dict[str, Any]) -> List[str]:
     return list(metadata.get("tables", {}).keys())
 
 
+@handle_errors
 def help() -> None:
     print(
         "Функции:\n"
@@ -143,6 +150,8 @@ def help() -> None:
 
 # ===== CRUD =====
 
+@log_time
+@handle_errors
 def insert(
     metadata: Dict[str, Any],
     table_name: str,
@@ -174,6 +183,9 @@ def insert(
     return table_data, new_id
 
 
+@log_time
+@handle_errors
+@create_cacher
 def select(
     table_data: List[Dict[str, Any]],
     where_clause: Optional[Dict[str, Any]] = None,
@@ -195,6 +207,7 @@ def select(
     return [rec for rec in table_data if match(rec)]
 
 
+@handle_errors
 def update(
     metadata: Dict[str, Any],
     table_name: str,
@@ -230,6 +243,8 @@ def update(
     return table_data, updated_ids
 
 
+@confirm_action("удаление записей")
+@handle_errors
 def delete(
     table_data: List[Dict[str, Any]],
     where_clause: Dict[str, Any],
@@ -262,7 +277,7 @@ def table_info(
     table_data: List[Dict[str, Any]],
 ) -> Tuple[str, int]:
     """
-    Возвращает (строка_со_столбцами, количество_записей).
+    Возвращает тюпл (строка_со_столбцами, количество_записей).
     """
     schema = _schema_for_table(metadata, table_name)
     cols_str = ", ".join(f"{n}:{t}" for n, t in schema)

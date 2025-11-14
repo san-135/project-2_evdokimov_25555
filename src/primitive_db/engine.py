@@ -1,27 +1,30 @@
 # src/primitive_db/engine.py
 import shlex
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
+from prettytable import PrettyTable
 
 from .core import (
     create_table,
-    drop_table,
-    list_tables,
-    help as print_help,
-    insert,
-    select,
-    update,
     delete,
+    drop_table,
+    insert,
+    list_tables,
+    select,
     table_info,
+    update,
 )
-from .utils import load_metadata, save_metadata, load_table_data, save_table_data
+from .core import (
+    help as print_help,
+)
 from .parser import (
+    parse_delete,
+    parse_info,
     parse_insert,
     parse_select,
     parse_update,
-    parse_delete,
-    parse_info,
 )
-from prettytable import PrettyTable
+from .utils import load_metadata, load_table_data, save_metadata, save_table_data
 
 META_PATH = "db_meta.json"
 
@@ -88,7 +91,8 @@ def run() -> None:
 
             case "create_table":
                 if len(tokens) < 3:
-                    print("Некорректное значение: ожидались имя и столбцы. Попробуйте снова.")
+                    print("Некорректное значение: ожидались имя и столбцы. "
+                          "Попробуйте снова.")
                     continue
 
                 table_name = tokens[1]
@@ -102,7 +106,8 @@ def run() -> None:
 
             case "drop_table":
                 if len(tokens) != 2:
-                    print("Некорректное значение: ожидалось имя таблицы. Попробуйте снова.")
+                    print("Некорректное значение: ожидалось имя таблицы. "
+                          "Попробуйте снова.")
                     continue
                 table_name = tokens[1]
                 metadata = drop_table(metadata, table_name)
@@ -121,7 +126,8 @@ def run() -> None:
                 data = load_table_data(table_name)
                 data, new_id = insert(metadata, table_name, values, data)
                 save_table_data(table_name, data)
-                print(f'Запись с ID={new_id} успешно добавлена в таблицу "{table_name}".')
+                print(f'Запись с ID={new_id} успешно добавлена в таблицу '
+                      '"{table_name}".')
                 continue
 
             case "select ":
@@ -141,10 +147,12 @@ def run() -> None:
                     print(f'Ошибка: Таблица "{table_name}" не существует.')
                     continue
                 data = load_table_data(table_name)
-                data, updated_ids = update(metadata, table_name, data, set_clause, where)
+                data, updated_ids = update(metadata, table_name, 
+                                           data, set_clause, where)
                 save_table_data(table_name, data)
                 if len(updated_ids) == 1:
-                    print(f'Запись с ID={updated_ids[0]} в таблице "{table_name}" успешно обновлена.')
+                    print(f'Запись с ID={updated_ids[0]} в таблице "{table_name}" '
+                          'успешно обновлена.')
                 else:
                     print(f"Обновлено записей: {len(updated_ids)}")
                 continue
@@ -158,7 +166,8 @@ def run() -> None:
                 data, deleted_ids = delete(data, where)
                 save_table_data(table_name, data)
                 if len(deleted_ids) == 1:
-                    print(f'Запись с ID={deleted_ids[0]} успешно удалена из таблицы "{table_name}".')
+                    print(f'Запись с ID={deleted_ids[0]} успешно удалена из таблицы '
+                          '"{table_name}".')
                 else:
                     print(f"Удалено записей: {len(deleted_ids)}")
                 continue

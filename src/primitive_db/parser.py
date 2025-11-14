@@ -12,7 +12,8 @@ def _strip_quotes(s: str) -> str:
 def _cast_literal(token: str) -> Any:
     t = token.strip()
     low = t.lower()
-    if (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
+    if (t.startswith('"') and t.endswith('"')) \
+        or (t.startswith("'") and t.endswith("'")):
         return _strip_quotes(t)
     if low == "true":
         return True
