@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 def _strip_quotes(s: str) -> str:
@@ -9,144 +9,148 @@ def _strip_quotes(s: str) -> str:
     return s
 
 
-def _cast_literal(token: str) -> Any:
+def parse_scalar(token: str) -> Any:
     t = token.strip()
+    # bool
     low = t.lower()
-    if (t.startswith('"') and t.endswith('"')) \
-        or (t.startswith("'") and t.endswith("'")):
-        return _strip_quotes(t)
     if low == "true":
         return True
     if low == "false":
         return False
-    if re.fullmatch(r"-?\d+", t):
+    # int
+    if re.fullmatch(r"[+-]?\d+", t):
         return int(t)
-    raise ValueError(f"Не удалось распознать литерал: {token!r}. "
-                     f'Строки должны быть в кавычках, логические — "true"/"false".')
+    # string (требуем кавычки для строк)
+    if (len(t) >= 2) and (t[0] in ("'", '"') and t[-1] == t[0]):
+        return _strip_quotes(t)
+    # иначе — ошибка
+    raise ValueError(f"Некорректное значение: {token} (строки должны быть в кавычках)")
 
 
-def _split_commas(s: str) -> List[str]:
+def _split_commas(strin: str) -> List[str]:
     """
     Разделение по запятым с учётом кавычек.
     """
     parts: List[str] = []
     buf: List[str] = []
-    q: Optional[str] = None
-    i = 0
-    while i < len(s):
-        ch = s[i]
-        if q:
+    quote: Optional[str] = None
+    for ch in strin:
+        if quote:
             buf.append(ch)
-            if ch == q:
-                q = None
+            if ch == quote:
+                quote = None
         else:
             if ch in ("'", '"'):
-                q = ch
+                quote = ch
                 buf.append(ch)
             elif ch == ",":
                 parts.append("".join(buf).strip())
                 buf = []
             else:
                 buf.append(ch)
-        i += 1
     if buf:
         parts.append("".join(buf).strip())
     return parts
 
 
-def parse_values_segment(cmd: str) -> List[Any]:
-    m = re.search(r"values\s*\((.*)\)\s*$", cmd, flags=re.IGNORECASE | re.DOTALL)
+def parse_values_list(values_segment: str) -> List[Any]:
+    # ожидаем "( ... )"
+    s = values_segment.strip()
+    if not (s.startswith("(") and s.endswith(")")):
+        raise ValueError("Ожидался список значений в скобках: (v1, v2, ...)")
+    inner = s[1:-1]
+    raw_vals = _split_commas(inner)
+    return [parse_scalar(rv) for rv in raw_vals]
+
+
+def parse_where(where_segment: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not where_segment:
+        return None
+    # поддерживаем один предикат: <col> = <value>
+    m = re.fullmatch(r"\s*(\w+)\s*=\s*(.+?)\s*$", where_segment)
     if not m:
-        raise ValueError("Не найдены значения в скобках после VALUES")
-    inner = m.group(1).strip()
-    if not inner:
-        return []
-    tokens = _split_commas(inner)
-    return [_cast_literal(tok) for tok in tokens]
-
-
-def parse_condition(cond: str) -> Dict[str, Any]:
-    """
-    'col = value' -> {'col': cast(value)}
-    """
-    if "=" not in cond:
-        raise ValueError("Ожидалось выражение вида <столбец> = <значение>")
-    left, right = cond.split("=", 1)
-    col = left.strip()
-    val = _cast_literal(right.strip())
-    if not col:
-        raise ValueError("Пустое имя столбца в условии")
+        raise ValueError("Ожидалось условие вида: <колонка> = <значение>")
+    col = m.group(1)
+    val = parse_scalar(m.group(2))
     return {col: val}
 
 
-def parse_set_clause(s: str) -> Dict[str, Any]:
-    """
-    'a = 1, b = "x"' -> {'a': 1, 'b': 'x'}
-    """
-    parts = _split_commas(s)
-    result: Dict[str, Any] = {}
-    for p in parts:
-        kv = parse_condition(p)
-        result.update(kv)
-    return result
+def parse_set(set_segment: str) -> Dict[str, Any]:
+    # поддерживаем несколько через запятую: a=1, b="x"
+    assigns = _split_commas(set_segment)
+    res: Dict[str, Any] = {}
+    for item in assigns:
+        m = item.split("=")
+        if not (m[0] and m[1]):
+            raise ValueError(f"Некорректное присваивание в set: {item}")
+        col = m[0]
+        val = parse_scalar(m[1])
+        res[col] = val
+    return res
 
 
-def parse_insert(cmd: str) -> Tuple[str, List[Any]]:
-    m = re.match(r"^\s*insert\s+into\s+(\w+)\s+values\s*\(", cmd, flags=re.IGNORECASE)
-    if not m:
-        raise ValueError("Некорректная команда INSERT")
-    table = m.group(1)
-    values = parse_values_segment(cmd)
-    return table, values
+# Командные парсеры
 
+def parse_command(line: str) -> Dict[str, Any]:
+    s = line.strip()
+    low = s.lower()
 
-def parse_select(cmd: str) -> Tuple[str, Optional[Dict[str, Any]]]:
-    m = re.match(
-        r"^\s*select\s+from\s+(\w+)(?:\s+where\s+(.*))?\s*$",
-        cmd,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not m:
-        raise ValueError("Некорректная команда SELECT")
-    table = m.group(1)
-    where_raw = m.group(2)
-    where = parse_condition(where_raw) if where_raw else None
-    return table, where
+    # insert into <table> values (...)
+    m = re.fullmatch(r"\s*insert\s+into\s+(\w+)\s+values\s*(\(.+\))\s*$", s, 
+                     flags=re.IGNORECASE)
+    if m:
+        return {"cmd": "insert", "table": m.group(1), 
+                "values": parse_values_list(m.group(2))}
 
+    # select from <table> [where ...]
+    m = re.fullmatch(r"\s*select\s+from\s+(\w+)(?:\s+where\s+(.+))?\s*$", s, 
+                     flags=re.IGNORECASE)
+    if m:
+        table = m.group(1)
+        where = parse_where(m.group(2)) if m.group(2) else None
+        return {"cmd": "select", "table": table, "where": where}
 
-def parse_update(cmd: str) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
-    m = re.match(
-        r"^\s*update\s+(\w+)\s+set\s+(.*?)(?:\s+where\s+(.*))?\s*$",
-        cmd,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not m:
-        raise ValueError("Некорректная команда UPDATE")
-    table = m.group(1)
-    set_raw = m.group(2)
-    where_raw = m.group(3)
-    if not where_raw:
-        raise ValueError("Для UPDATE требуется выражение WHERE")
-    set_clause = parse_set_clause(set_raw)
-    where = parse_condition(where_raw)
-    return table, set_clause, where
+    # update <table> set ... where ...
+    m = re.fullmatch(r"\s*update\s+(\w+)\s+set\s+(.+?)\s+where\s+(.+)\s*$", s, 
+                     flags=re.IGNORECASE)
+    if m:
+        return {"cmd": "update", "table": m.group(1), "set": parse_set(m.group(2)), 
+                "where": parse_where(m.group(3))}
 
+    # delete from <table> where ...
+    m = re.fullmatch(r"\s*delete\s+from\s+(\w+)\s+where\s+(.+)\s*$", s, 
+                     flags=re.IGNORECASE)
+    if m:
+        return {"cmd": "delete", "table": m.group(1), 
+                "where": parse_where(m.group(2))}
 
-def parse_delete(cmd: str) -> Tuple[str, Dict[str, Any]]:
-    m = re.match(
-        r"^\s*delete\s+from\s+(\w+)\s+where\s+(.*)\s*$",
-        cmd,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not m:
-        raise ValueError("Некорректная команда DELETE")
-    table = m.group(1)
-    where = parse_condition(m.group(2))
-    return table, where
+    # info <table>
+    m = re.fullmatch(r"\s*info\s+(\w+)\s*$", s, flags=re.IGNORECASE)
+    if m:
+        return {"cmd": "info", "table": m.group(1)}
 
+    # list tables
+    if low.startswith("list tables"):
+        return {"cmd": "list_tables"}
 
-def parse_info(cmd: str) -> str:
-    m = re.match(r"^\s*info\s+(\w+)\s*$", cmd, flags=re.IGNORECASE)
-    if not m:
-        raise ValueError("Некорректная команда INFO")
-    return m.group(1)
+    # create table <name> <col:type> ...
+    if low.startswith("create table"):
+        parts = s.split()
+        if len(parts) <= 3:
+            raise ValueError("Некорректная команда. Ожидались имя таблицы и столбцы.")
+        return {"cmd": "create_table", "table": parts[2], "columns": parts[3:]}
+
+    # drop table <name>
+    if low.startswith("drop table"):
+        parts = s.split()
+        if len(parts) != 3:
+            raise ValueError("Некорректная команда. Ожидалось имя таблицы.")
+        return {"cmd": "drop_table", "table": parts[2]}
+
+    if low in ("help", "h"):
+        return {"cmd": "help"}
+
+    if low in ("exit", "quit", "q"):
+        return {"cmd": "exit"}
+
+    raise ValueError("Некорректная функция или формат команды")

@@ -39,19 +39,17 @@ def handle_errors(func: Callable) -> Callable:
     На KeyError, ValueError, FileNotFoundError печатает сообщение
     и возвращает значение по умолчанию.
     """
-    @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except (KeyError, ValueError, FileNotFoundError) as err:
-            print(f"Ошибка: {err}")
-            default = _DEFAULT_RETURNS.get(func.__name__)
-            if default is not None:
-                try:
-                    return default(*args, **kwargs)
-                except Exception:
-                    return None
-            return None
+        except FileNotFoundError:
+            print("Ошибка: Файл данных не найден. Возможно, база данных не инициализирована.")
+        except KeyError as e:
+            print(f"Ошибка: Таблица или столбец {e} не найден.")
+        except ValueError as e:
+            print(f"Ошибка валидации: {e}")
+        except Exception as e:
+            print(f"Произошла непредвиденная ошибка: {e}")
     return wrapper
 
 
@@ -64,7 +62,7 @@ def confirm_action(action_name: str) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
             answer = input(f'Вы уверены, что хотите выполнить "{action_name}"? '
-                           '[y/n]: ').strip().lower()
+                           'Это действие необратимо! [y/n]: ').strip().lower()
             if answer != "y":
                 print("Операция отменена.")
                 default = _DEFAULT_RETURNS.get(func.__name__)
@@ -102,3 +100,4 @@ def create_cacher() -> Callable[[Tuple[Any, ...], Callable[[], Any]], Any]:
         cache[key] = value
         return value
     return cache_result
+

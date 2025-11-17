@@ -1,64 +1,44 @@
-# src/primitive_db/engine.py
-import shlex
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from prettytable import PrettyTable
 
+from src.decorators import create_cacher
 from .core import (
+    _get_schema,
     create_table,
-    delete,
     drop_table,
-    insert,
+    help,
     list_tables,
-    select,
-    table_info,
-    update,
 )
-from .core import (
-    help as print_help,
+from .core import delete as core_delete
+from .core import insert as core_insert
+from .core import select as core_select
+from .core import update as core_update
+from .parser import parse_command
+from .utils import (
+    META_PATH,
+    load_metadata,
+    load_table_data,
+    save_metadata,
+    save_table_data,
 )
-from .parser import (
-    parse_delete,
-    parse_info,
-    parse_insert,
-    parse_select,
-    parse_update,
-)
-from .utils import load_metadata, load_table_data, save_metadata, save_table_data
-
-META_PATH = "db_meta.json"
 
 
-def _print_list(items: List[str]) -> None:
-    """
-    Печать списка в формате:
-    - item
-    - item
-    - ...
-    """
-    for name in items:
-        print(f"- {name}")
+def _print_table(schema: List[Dict[str, str]], rows: List[Dict[str, Any]]) -> None:
+    headers = [c["name"] for c in schema]
+    t = PrettyTable()
+    t.field_names = headers
+    for r in rows:
+        t.add_row([r.get(h) for h in headers])
+    print(t)
 
 
-def _field_order(metadata: Dict[str, Any], table_name: str) -> List[str]:
-    structure = metadata["tables"][table_name]["structure"]
-    return [c["name"] for c in structure]
+def run():
+    metadata: Dict[str, Any] = load_metadata(META_PATH)
+    # Кэшер
+    select_cache = create_cacher()
 
-
-def _print_table(rows: List[Dict[str, Any]], headers: List[str]) -> None:
-    table = PrettyTable()
-    table.field_names = headers
-    for rec in rows:
-        table.add_row([rec.get(h) for h in headers])
-    print(table)
-
-
-def run() -> None:
-    """
-    Основной цикл: загрузка метаданных, чтение команд, обработка и сохранение.
-    """
-    metadata = load_metadata(META_PATH)
-    print("База данных запущена. Введите команду. help для справки.")
+    print("База данных запущена. Введите help для справки.")
 
     while True:
         try:
@@ -71,119 +51,127 @@ def run() -> None:
             continue
 
         try:
-            tokens = shlex.split(user_input)
-        except ValueError as exc:
-            print(f"Некорректное значение: {exc}. Попробуйте снова.")
+            com = parse_command(user_input)
+        except ValueError:
+            print(ValueError)
             continue
 
-        if not tokens:
-            continue
 
-        cmd = tokens[0].lower()
+        ctype = com["cmd"]
+        match ctype:
 
-        match cmd:
-            case "exit" | "quit" | "q":
+            case "exit":
                 break
-
+                
             case "help":
-                print_help()
-                continue
+                help()
 
             case "create_table":
-                if len(tokens) < 3:
-                    print("Некорректное значение: ожидались имя и столбцы. "
-                          "Попробуйте снова.")
-                    continue
+                table = com["table"]
+                columns = com["columns"]
+                metadata = create_table(metadata, table, columns)
+                save_metadata(META_PATH, metadata)
 
-                table_name = tokens[1]
-                columns = tokens[2:]
-                try:
-                    metadata = create_table(metadata, table_name, columns)
-                    save_metadata(META_PATH, metadata)
-                except ValueError as exc:
-                    print(f"Некорректное значение: {exc}. Попробуйте снова.")
-                continue
+
 
             case "drop_table":
-                if len(tokens) != 2:
-                    print("Некорректное значение: ожидалось имя таблицы. "
-                          "Попробуйте снова.")
-                    continue
-                table_name = tokens[1]
-                metadata = drop_table(metadata, table_name)
+                table = com["table"]
+                metadata = drop_table(metadata, table)
                 save_metadata(META_PATH, metadata)
-                continue
+                # Сброс кэша
+                select_cache = create_cacher()
 
             case "list_tables":
                 names = list_tables(metadata)
-                _print_list(names)
-                continue
+                print("tables - " + (", ".join(names) if names else ""))
+
             case "insert":
-                table_name, values = parse_insert(user_input)
-                if "tables" not in metadata or table_name not in metadata["tables"]:
-                    print(f'Ошибка: Таблица "{table_name}" не существует.')
+                table = com["table"]
+                values = com["values"]
+                if "tables" not in metadata or table not in metadata["tables"]:
+                    print(f'Ошибка: Таблица "{table}" не существует.')
                     continue
-                data = load_table_data(table_name)
-                data, new_id = insert(metadata, table_name, values, data)
-                save_table_data(table_name, data)
-                print(f'Запись с ID={new_id} успешно добавлена в таблицу '
-                      '"{table_name}".')
-                continue
+                rows = load_table_data(table)
+                # Правильно передаем аргументы
+                rows = core_insert(metadata, table, rows, values)
+                save_table_data(table, rows)
+                select_cache = create_cacher()
+                if rows:
+                    new_id = rows[-1]["ID"]
+                    print(f'Запись с ID={new_id} добавлена в таблицу "{table}".')
 
-            case "select ":
-                table_name, where = parse_select(user_input)
-                if "tables" not in metadata or table_name not in metadata["tables"]:
-                    print(f'Ошибка: Таблица "{table_name}" не существует.')
+            case "select":
+                table = com["table"]
+                where = com.get("where")
+                if "tables" not in metadata or table not in metadata["tables"]:
+                    print(f'Ошибка: Таблица "{table}" не существует.')
                     continue
-                data = load_table_data(table_name)
-                rows = select(data, where)
-                headers = _field_order(metadata, table_name)
-                _print_table(rows, headers)
-                continue
 
-            case "update ":
-                table_name, set_clause, where = parse_update(user_input)
-                if "tables" not in metadata or table_name not in metadata["tables"]:
-                    print(f'Ошибка: Таблица "{table_name}" не существует.')
-                    continue
-                data = load_table_data(table_name)
-                data, updated_ids = update(metadata, table_name, 
-                                           data, set_clause, where)
-                save_table_data(table_name, data)
-                if len(updated_ids) == 1:
-                    print(f'Запись с ID={updated_ids[0]} в таблице "{table_name}" '
-                          'успешно обновлена.')
+                rows = load_table_data(table)
+                schema = _get_schema(metadata, table)
+
+                # Ключ кэша: (table, where-как-кортеж)
+                where_key: Optional[Tuple[Tuple[str, Any], ...]] = None
+                if where:
+                    where_key = tuple(sorted(where.items()))
+
+                key = (table, where_key)
+
+                def _value():
+                    return core_select(rows, where)
+
+                result = select_cache(key, _value)
+                if result:
+                    _print_table(schema, result)
                 else:
-                    print(f"Обновлено записей: {len(updated_ids)}")
-                continue
+                    print("Нет данных по заданному запросу.")
 
-            case "delete ":
-                table_name, where = parse_delete(user_input)
-                if "tables" not in metadata or table_name not in metadata["tables"]:
-                    print(f'Ошибка: Таблица "{table_name}" не существует.')
+            case "update":
+                table = com["table"]
+                set_clause = com["set"]
+                where = com["where"]
+                if "tables" not in metadata or table not in metadata["tables"]:
+                    print(f'Ошибка: Таблица "{table}" не существует.')
                     continue
-                data = load_table_data(table_name)
-                data, deleted_ids = delete(data, where)
-                save_table_data(table_name, data)
-                if len(deleted_ids) == 1:
-                    print(f'Запись с ID={deleted_ids[0]} успешно удалена из таблицы '
-                          '"{table_name}".')
+                rows = load_table_data(table)
+                changed = core_update(metadata, table, rows, set_clause, where)
+                save_table_data(table, rows)
+                # Сброс кэша после изменения данных
+                select_cache = create_cacher()
+                if changed == 1 and "ID" in where:
+                    print(f'Запись с ID={where["ID"]} в таблице "{table}" '
+                            'успешно обновлена.')
                 else:
-                    print(f"Удалено записей: {len(deleted_ids)}")
-                continue
+                    print(f"Обновлено записей: {changed}.")
 
-            case "info ":
-                table_name = parse_info(user_input)
-                if "tables" not in metadata or table_name not in metadata["tables"]:
-                    print(f'Ошибка: Таблица "{table_name}" не существует.')
+            case "delete":
+                table = com["table"]
+                where = com["where"]
+                rows = load_table_data(table)
+                deleted = core_delete(rows, where)
+                save_table_data(table, rows)
+                # Сброс кэша после изменения данных
+                select_cache = create_cacher()
+                if deleted == 1 and "ID" in where:
+                    print(f'Запись с ID={where["ID"]} успешно удалена '
+                            'из таблицы "{table}".')
+                else:
+                    print(f"Удалено записей: {deleted}.")
+
+            case "info":
+                table = com["table"]
+                if "tables" not in metadata or table not in metadata["tables"]:
+                    print(f'Ошибка: Таблица "{table}" не существует.')
                     continue
-                data = load_table_data(table_name)
-                cols_str, count = table_info(metadata, table_name, data)
-                print(f"Таблица: {table_name}")
-                print(f"Столбцы: {cols_str}")
-                print(f"Количество записей: {count}")
-                continue
+                schema = _get_schema(metadata, table)
+                rows = load_table_data(table)
+                cols = ", ".join(f'{c["name"]}:{c["type"]}' for c in schema)
+                print(f"Таблица: {table}")
+                print(f"Столбцы: {cols}")
+                print(f"Количество записей: {len(rows)}")
 
-        print(f"Функции {cmd} нет. Попробуйте снова.")
+            case _:
+                print(f"Функция {com} неизвестна. Попробуйте снова.")
+
 
     print("Выход из программы.")
