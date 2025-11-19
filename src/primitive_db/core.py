@@ -2,7 +2,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.decorators import confirm_action, handle_errors, log_time
 
-ALLOWED_TYPES: Dict[str, type] = {"int": int, "str": str, "bool": bool}
+ALLOWED_TYPES: Dict[str, type] = {"int": int, "str": str,  "bool": bool, 
+                                "integer": int, "string":str, "boolean":bool}
 
 
 def _normalize_columns(columns: List[str]) -> List[Tuple[str, str]]:
@@ -112,7 +113,7 @@ def help() -> str:
         "<command> create table <имя_таблицы> <столбец1:тип> <столбец2:тип> .. - создать таблицу\n" # NOQA E501
         "<command> list tables - показать список всех таблиц\n"
         "<command> drop table <имя_таблицы> - удалить таблицу\n"
-        "<command> insert into <имя_таблицы> values (<v1>, <v2>, ...) - создать запись (без ID)\n"  # NOQA E501
+        "<command> insert into <имя_таблицы> values (<v1>, <v2>, ...), (...) - создать запись (без ID)\n"  # NOQA E501
         "<command> select from <имя_таблицы> [where <столбец>=<значение>] - прочитать записи\n"   # NOQA E501
         "<command> update <имя_таблицы> set <столбец>=<значение>[, ...] where <столбец>=<значение> - обновить\n"    # NOQA E501
         "<command> delete from <имя_таблицы> where <столбец>=<значение> - удалить\n"  # NOQA E501
@@ -128,35 +129,34 @@ def help() -> str:
 @log_time
 @handle_errors
 def insert(
-    metadata: Dict[str, Any], 
-    table_name: str, 
-    rows: List[Dict[str, Any]], 
-    values: List[Any]
+    metadata: Dict[str, Any],
+    table_name: str,
+    rows: List[Dict[str, Any]],
+    values_list: List[List[Any]]
 ) -> List[Dict[str, Any]]:
-    """
-    Добавляет запись и возвращает (обновлённые_данные, новый_id).
-    """
-    schema = _get_schema(metadata, table_name)  
-    # [{'name': 'ID','type':'int'}, {'name':'name','type':'str'}, ...]
-
-    # Получаем список столбцов без ID
-    non_id_columns = [col for col in schema if col["name"] != "ID"]
-
-    # Проверяем количество значений
-    if len(values) != len(non_id_columns):
-        raise ValueError(
-            f"Ожидалось {len(non_id_columns)} значений, получено {len(values)}"
-        )
-
-    # Валидация типов по схеме
-    for val, col in zip(values, non_id_columns):
-        _validate_value(val, col["type"])
-
-    new_row = {"ID": _next_id(rows)}
-    for val, col in zip(values, non_id_columns):
-        new_row[col["name"]] = val
-    rows.append(new_row)
+    schema = _get_schema(metadata, table_name)
+    non_id_columns = [n for n in schema if n["name"] != "ID"]
+    
+    # Проверяем все группы значений
+    for values in values_list:
+        if len(values) != len(non_id_columns):
+            raise ValueError(
+                f"Ожидалось {len(non_id_columns)} значений, "
+                f"получено {len(values)}"
+            )
+    
+    for values in values_list:
+        # Валидация типов
+        for val, col in zip(values, non_id_columns):
+            _validate_value(val, col["type"])
+        
+        new_row = {"ID": _next_id(rows)}
+        for val, col in zip(values, non_id_columns):
+            new_row[col["name"]] = val
+        rows.append(new_row)
+    
     return rows
+
 
 
 def match(

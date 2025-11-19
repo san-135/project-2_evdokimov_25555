@@ -53,14 +53,22 @@ def _split_commas(strin: str) -> List[str]:
     return parts
 
 
-def parse_values_list(values_segment: str) -> List[Any]:
-    # ожидаем "( ... )"
+def parse_values_list(values_segment: str) -> List[List[Any]]:
+    # Ожидаем "( ... ), ( ... ), ..."
     s = values_segment.strip()
     if not (s.startswith("(") and s.endswith(")")):
-        raise ValueError("Ожидался список значений в скобках: (v1, v2, ...)")
-    inner = s[1:-1]
-    raw_vals = _split_commas(inner)
-    return [parse_scalar(rv) for rv in raw_vals]
+        raise ValueError("Ожидался список значений в скобках")
+    
+    # Разделяем группы значений
+    inner = s[1:-1] # Отрезаем внешние скобки
+    groups = inner.split(sep="), (")  # Разделяем группы в скобках
+    
+    result = []
+    for group in groups:
+        values = _split_commas(group)
+        result.append([parse_scalar(v) for v in values])   
+    return result
+
 
 
 def parse_where(where_segment: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -94,13 +102,23 @@ def parse_set(set_segment: str) -> Dict[str, Any]:
 def parse_command(line: str) -> Dict[str, Any]:
     s = line.strip()
     low = s.lower()
-
-    # insert into <table> values (...)
-    m = re.fullmatch(r"\s*insert\s+into\s+(\w+)\s+values\s*(\(.+\))\s*$", s, 
-                     flags=re.IGNORECASE)
-    if m:
-        return {"cmd": "insert", "table": m.group(1), 
-                "values": parse_values_list(m.group(2))}
+    
+    # Обработка INSERT с множественными значениями
+    # Ожидаем ввод вида:
+    # insert into queue values ('Alex', 38, true), ('Svetlana', 44, true), ('Sergei', 40, false)    # NOQA E501
+    if low.startswith("insert into"):
+        # Извлекаем название таблицы и значения
+        table = low.split()[2]  # 'queue'
+        values_segment = s.split('values')[1].strip()  # Все после 'values'
+        
+        # Парсим значения, разделенные запятыми и скобками
+        values = parse_values_list(values_segment)
+        
+        return {
+            "cmd": "insert", 
+            "table": table,
+            "values": values
+        }
 
     # select from <table> [where ...]
     m = re.fullmatch(r"\s*select\s+from\s+(\w+)(?:\s+where\s+(.+))?\s*$", s, 

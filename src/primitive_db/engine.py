@@ -52,8 +52,8 @@ def run():
 
         try:
             com = parse_command(user_input)
-        except ValueError:
-            print(ValueError)
+        except ValueError as e:
+            print(f"Ошибка парсинга команды: {str(e)}")
             continue
 
 
@@ -83,22 +83,28 @@ def run():
 
             case "list_tables":
                 names = list_tables(metadata)
-                print("tables - " + (", ".join(names) if names else ""))
+                if names:
+                    print("Tables:\n - " + "\n - ".join(names)) 
+                else:
+                    print("There are no tables.")
 
             case "insert":
                 table = com["table"]
-                values = com["values"]
+                values_list = com["values"]  # Теперь это список списков
+                
                 if "tables" not in metadata or table not in metadata["tables"]:
                     print(f'Ошибка: Таблица "{table}" не существует.')
                     continue
+                
                 rows = load_table_data(table)
-                # Правильно передаем аргументы
-                rows = core_insert(metadata, table, rows, values)
+                rows = core_insert(metadata, table, rows, values_list)
                 save_table_data(table, rows)
                 select_cache = create_cacher()
+                
                 if rows:
-                    new_id = rows[-1]["ID"]
-                    print(f'Запись с ID={new_id} добавлена в таблицу "{table}".')
+                    new_ids = [r["ID"] for r in rows[-len(values_list):]]
+                    print(f'Добавлены записи с ID={new_ids} в таблицу "{table}".')
+
 
             case "select":
                 table = com["table"]

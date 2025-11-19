@@ -40,21 +40,21 @@
 ```
 $ make project
 >>> help
->>> create_table users name:str age:int sex:str is_student:bool
+>>> create table users name:str age:int sex:str is_student:bool
 >>> insert into users values ("Alex", 22, true) ("Ivan", 38, false)
 >>> select from users where age = 22
 >>> update users set age = 21 where name = "Alex"
 >>> delete from users where ID = 1
 >>> info users
->>> list_tables
+>>> list tables
 >>> exit
 ```
 
 ## Команды
-- create_table <имя> <столбец1:тип> <столбец2:тип> ... — создаёт таблицу; ID:int добавляется автоматически.
-- list_tables — показывает имена всех таблиц.
-- drop_table <имя> — удаляет таблицу из метаданных (файл данных можно удалить вручную при необходимости).
-- insert into <имя> values (v1, v2, ...) — добавляет запись без ID; число значений = числу столбцов минус ID.
+- create table <имя> <столбец1:тип> <столбец2:тип> ... — создаёт таблицу; ID:int добавляется автоматически.
+- list tables — показывает имена всех таблиц.
+- drop table <имя> — удаляет таблицу из метаданных (файл данных можно удалить вручную при необходимости).
+- insert into <имя> values (v1, v2, ...), (v1, v2, ...), ... — добавляет записи без ID; число значений = числу столбцов кроме ID.
 - select from <имя> [where col = value] — выводит все записи или только подходящие по условию.
 - update <имя> set col1 = value1[, col2 = value2 ...] where col = value — обновляет поля у подходящих записей.
 - delete from <имя> where col = value — удаляет подходящие записи.
