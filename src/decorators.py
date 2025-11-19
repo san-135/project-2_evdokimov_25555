@@ -43,7 +43,8 @@ def handle_errors(func: Callable) -> Callable:
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
-            print("Ошибка: Файл данных не найден. Возможно, база данных не инициализирована.")
+            print("Ошибка: Файл данных не найден. "
+                  "Возможно, база данных не инициализирована.")
         except KeyError as e:
             print(f"Ошибка: Таблица или столбец {e} не найден.")
         except ValueError as e:

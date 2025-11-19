@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from prettytable import PrettyTable
 
 from src.decorators import create_cacher
+
 from .core import (
     _get_schema,
     create_table,
