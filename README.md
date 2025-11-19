@@ -74,7 +74,7 @@ $ make project
 - Данные: JSON по таблицам, путь data/<table>.json; директория data создаётся автоматически при первом сохранении.
 - Формат записи: объект со всеми полями, включая ID (например, {"ID": 1, "name": "Sergei", "age": 28, "is_active": true}).
 
-## Некоторые команды:
+## Примеры команд:
 - Создание таблицы:
   - create_table users name:str age:int is_active:bool.
 - Вставка строки:
@@ -107,3 +107,7 @@ $ make project
 - Нет сложных условий (AND/OR), только одно равенство в where.
 - Нет индексов и транзакций 
 - Хранение — в JSON без блокировок.
+
+## Демонстрация работы программы на примере сессии:
+
+[![asciicast](https://asciinema.org/a/NdBjjTFAiZTVqohwAuRnZkvtk.svg)](https://asciinema.org/a/NdBjjTFAiZTVqohwAuRnZkvtk)
