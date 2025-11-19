@@ -2,8 +2,7 @@ import json
 import os
 from typing import Any, Dict, List
 
-META_PATH = "db_meta.json"
-DATA_DIR = "data"
+from src.constants import DATA_DIR, META_PATH
 
 
 def load_metadata(filepath: str = META_PATH) -> Dict[str, Any]:

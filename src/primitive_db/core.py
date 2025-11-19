@@ -1,9 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.constants import ALLOWED_TYPES
 from src.decorators import confirm_action, handle_errors, log_time
-
-ALLOWED_TYPES: Dict[str, type] = {"int": int, "str": str,  "bool": bool, 
-                                "integer": int, "string":str, "boolean":bool}
 
 
 def _normalize_columns(columns: List[str]) -> List[Tuple[str, str]]:
